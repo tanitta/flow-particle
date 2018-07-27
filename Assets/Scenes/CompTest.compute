@@ -1,0 +1,54 @@
+﻿#pragma kernel Init 
+#pragma kernel Update
+
+#define NUM_PARTICLE_THREADS 16
+
+struct ParticleData
+{
+    float3 position;
+    float3 velocity;
+    float4 color;
+    float  age;
+};
+
+float _time;
+float _dt;
+
+float2 _colorTextureSize;
+RWStructuredBuffer<ParticleData> _particles;
+Texture2D<float3> _colorTexture;
+
+float randSimple(float2 v)
+{
+    return frac(sin(dot(v.xy, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+void Reset(uint id, inout ParticleData p){
+    float2 seed1 = float2(id + _time + 4.61, id + 5.83 + _time);
+    float2 seed2 = float2(id + _time + 2.75, id + 1.53 + _time);
+    float rad  = randSimple(seed1.xy)*3.14*2.0;
+    float n    = randSimple(seed1.yx)*0.5;
+    p.position = float3(cos(rad)*n, sin(rad)*n, 0);
+
+    rad  = randSimple(seed2.xy)*3.14*2.0;
+    n    = randSimple(seed2.yx);
+    p.velocity = float3(cos(rad)*n, sin(rad)*n, 0)*0.01;
+    p.age = 1.0;
+    float3 c = _colorTexture[(p.position.xy+float2(0.5, 0.5))*_colorTextureSize];
+    p.color = float4(c, 1);
+    /* p.color = float4(p.position.xy, 0, 1); */
+}
+
+[numthreads(NUM_PARTICLE_THREADS,1,1)]
+void Init(uint id: SV_DispatchThreadID){
+    Reset(id, _particles[id]);
+}
+
+[numthreads(NUM_PARTICLE_THREADS,1,1)]
+void Update(uint id: SV_DispatchThreadID){
+    _particles[id].position = _particles[id].position + _particles[id].velocity*_dt;
+    _particles[id].age += _dt;
+    /* if(_particles[id].age > 10)Reset(id, _particles[id]); */
+    if(length(_particles[id].position) > 0.5)Reset(id, _particles[id]);
+}
+

@@ -1,0 +1,98 @@
+﻿#pragma kernel Init 
+#pragma kernel Update
+#pragma kernel Geom
+
+#define NUM_PARTICLE_THREADS 160
+#define AGE_MAX 10.0
+#define M_PI 3.1415926535897932384626433832795
+
+struct ParticleData
+{
+    float3 position;
+    float3 velocity;
+    float4 color;
+    float  age;
+};
+
+float _time;
+float _dt;
+
+float2 _colorTextureSize;
+RWStructuredBuffer<ParticleData> _particles;
+RWStructuredBuffer<float4> _velTexBuffer;
+Texture2D<float3> _colorTexture;
+Texture2D<float3> _velocityTexture;
+
+float randSimple(float2 v)
+{
+    return frac(sin(dot(v.xy, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+void Reset(uint id, inout ParticleData p, bool randomizeAge = false){
+    float2 seed1 = float2(id + _time + 4.61, id + 5.83 + _time);
+    float2 seed2 = float2(id + _time + 2.75, id + 1.53 + _time);
+    float rad  = randSimple(seed1.xy)*3.14*2.0;
+    float n    = randSimple(seed1.yx)*0.5;
+    p.position = float3(cos(rad)*n, sin(rad)*n, 0);
+
+    rad  = randSimple(seed2.xy)*3.14*2.0;
+    n    = randSimple(seed2.yx);
+    p.velocity = float3(cos(rad)*n, sin(rad)*n, 0)*0.01;
+    p.age = 0.0;
+    float3 c = _colorTexture[(p.position.xy+float2(0.5, 0.5))*_colorTextureSize];
+    p.color = float4(c, 1);
+    /* p.color = float4(p.position.xy, 0, 1); */
+
+    if(randomizeAge){
+        float2 seed1 = float2(id + _time + 2.61, id + 5.90 + _time);
+        p.age = randSimple(seed1.xy)*AGE_MAX;
+    }
+
+}
+
+[numthreads(NUM_PARTICLE_THREADS,1,1)]
+void Init(uint id: SV_DispatchThreadID){
+    Reset(id, _particles[id], true);
+}
+
+/* [numthreads(512,512,1)] */
+/* void InitTexture(uint2 id: SV_DispatchThreadID){ */
+/*     _velTexBuffer[id] = _velocityTexture[id];    */
+/* }                                                */
+
+[numthreads(NUM_PARTICLE_THREADS,1,1)]
+void Update(uint id: SV_DispatchThreadID){
+
+    float3 vc = _velocityTexture[(_particles[id].position.xy+float2(0.5, 0.5))*_colorTextureSize];
+    _particles[id].velocity = (vc - float3(0.5, 0.5, 0))*0.040;
+    _particles[id].position = _particles[id].position + _particles[id].velocity*_dt;
+    /* _particles[id].position.z = _particles[id].age; */
+
+    _particles[id].age += _dt;
+    if(_particles[id].age > AGE_MAX)Reset(id, _particles[id]);
+    /* if(length(_particles[id].position) > 0.5)Reset(id, _particles[id]); */
+}
+
+
+struct VertexData
+{
+    float4 position;
+    float4 color;
+};
+RWStructuredBuffer<VertexData> _vertices;
+[numthreads(NUM_PARTICLE_THREADS,1,1)]
+void Geom(uint id: SV_DispatchThreadID){
+    uint baseIndex = id*4;
+    float4 basePosition = float4(_particles[id].position, 1);
+    float size = 0.02 * pow(sin(_particles[id].age/AGE_MAX * M_PI), 0.2);
+    float4 velocityU = normalize(float4(_particles[id].velocity, 0));
+    float4 velocityV = float4(velocityU.y,-velocityU.x, 0, 0)*0.3;
+    _vertices[baseIndex+0].position = basePosition + (velocityU+velocityV)*size;
+    _vertices[baseIndex+1].position = basePosition + (velocityU-velocityV)*size;
+    _vertices[baseIndex+2].position = basePosition + (-velocityU-velocityV)*size;
+    _vertices[baseIndex+3].position = basePosition + (-velocityU+velocityV)*size;
+    _vertices[baseIndex+0].color = _particles[id].color;
+    _vertices[baseIndex+1].color = _particles[id].color;
+    _vertices[baseIndex+2].color = _particles[id].color;
+    _vertices[baseIndex+3].color = _particles[id].color;
+}
