@@ -73,6 +73,26 @@ void Update(uint id: SV_DispatchThreadID){
     /* if(length(_particles[id].position) > 0.5)Reset(id, _particles[id]); */
 }
 
+float4 hexalize(float4 i, float l){
+    float4 result = i;
+    if(l < i.x){
+        result.x = 1;
+    }else if(i.x < -l){
+        result.x = -1;
+    }else{
+        result.x = 0;
+    }
+
+    if(l < i.y){
+        result.y = 1;
+    }
+    else if(i.y < -l){
+        result.y = -1;
+    }else{
+        result.y = 0;
+    }
+    return result;
+}
 
 struct VertexData
 {
@@ -85,6 +105,7 @@ void Geom(uint id: SV_DispatchThreadID){
     uint baseIndex = id*4;
     float4 basePosition = float4(_particles[id].position, 1);
     float size = 0.02 * pow(sin(_particles[id].age/AGE_MAX * M_PI), 0.2);
+    /* float4 velocityU = hexalize(normalize(float4(_particles[id].velocity, 0)), 0.6); */
     float4 velocityU = normalize(float4(_particles[id].velocity, 0));
     float4 velocityV = float4(velocityU.y,-velocityU.x, 0, 0)*0.3;
     _vertices[baseIndex+0].position = basePosition + (velocityU+velocityV)*size;
